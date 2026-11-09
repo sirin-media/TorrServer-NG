@@ -1,13 +1,14 @@
 import axios from 'axios'
 import { memo, useEffect, useState } from 'react'
 import { playlistTorrHost, torrentsHost, viewedHost } from 'utils/Hosts'
+import { useFileNameConfig } from 'utils/FileNameRules'
 import { CopyToClipboard } from 'react-copy-to-clipboard'
 import { Button, Dialog, DialogActions, DialogTitle } from '@material-ui/core'
-import ptt from 'parse-torrent-title'
 import { useTranslation } from 'react-i18next'
 
 import { SmallLabel, MainSectionButtonGroup } from './style'
 import { SectionSubName } from '../style'
+import { getFileDisplayNames, getFileInfo, isLegacyNaming } from '../helpers'
 
 const TorrentFunctions = memo(
   ({
@@ -24,6 +25,7 @@ const TorrentFunctions = memo(
     torrentSize,
   }) => {
     const { t } = useTranslation()
+    const fileNameConfig = useFileNameConfig()
     const [offline, setOffline] = useState(offlineState || '')
     const [offlineBusy, setOfflineBusy] = useState(false)
     const [pinned, setPinned] = useState(!!offlinePinned)
@@ -65,7 +67,11 @@ const TorrentFunctions = memo(
     const latestViewedFileId = viewedFileList?.[viewedFileList?.length - 1]
     const latestViewedFile = playableFileList?.find(({ id }) => id === latestViewedFileId)?.path
     const isOnlyOnePlayableFile = playableFileList?.length === 1
-    const latestViewedFileData = latestViewedFile && ptt.parse(latestViewedFile)
+    const latestViewedFileData = latestViewedFile && getFileInfo(latestViewedFile, fileNameConfig)
+    const playableFilePaths = playableFileList?.map(({ path }) => path) || []
+    const latestViewedFileTitle = isLegacyNaming(fileNameConfig)
+      ? latestViewedFileData?.title
+      : latestViewedFile && getFileDisplayNames(playableFilePaths, fileNameConfig).get(latestViewedFile)
     const dropTorrent = () => axios.post(torrentsHost(), { action: 'drop', hash })
     const removeTorrentViews = () =>
       axios.post(viewedHost(), { action: 'rem', hash, file_index: -1 }).then(() => setViewedFileList())
@@ -81,7 +87,7 @@ const TorrentFunctions = memo(
             <SectionSubName mb={10}>
               {t('LatestFilePlayed')}{' '}
               <strong>
-                {latestViewedFileData?.title}.
+                {latestViewedFileTitle}.
                 {latestViewedFileData?.season && (
                   <>
                     {' '}
