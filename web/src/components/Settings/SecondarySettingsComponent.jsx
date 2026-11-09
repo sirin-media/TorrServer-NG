@@ -19,6 +19,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { SecondarySettingsContent, SettingSectionLabel } from './style'
 import HTTPSSettings from './HTTPSSettings'
 import OfflineSettings from './OfflineSettings'
+import FileNameRulesSettings from './FileNameRulesSettings'
 
 // Create a styled status message component
 const StatusMessage = styled('div')(({ theme, severity }) => ({
@@ -376,6 +377,7 @@ export default function SecondarySettingsComponent({ settings, inputForm, update
         multiline
         minRows={6}
       />
+      <FileNameRulesSettings settings={settings} updateSettings={updateSettings} />
       <SettingSectionLabel style={{ marginTop: '20px' }}>{t('DLNA')}</SettingSectionLabel>
       <FormControlLabel
         control={<Switch checked={EnableDLNA} onChange={inputForm} id='EnableDLNA' color='secondary' />}
