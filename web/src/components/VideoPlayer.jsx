@@ -559,7 +559,6 @@ const VideoPlayer = ({
     video.paused ? video.play() : video.pause()
   }, [])
 
-  const togglePlay = () => setPlaying(p => !p)
   const handleTimeUpdate = () => setCurrentTime(videoRef.current.currentTime)
   const handleLoaded = () => {
     setDuration(videoRef.current.duration)
@@ -940,8 +939,8 @@ const VideoPlayer = ({
               src={hls ? undefined : videoSrc}
               onTimeUpdate={handleTimeUpdate}
               onLoadedMetadata={handleLoaded}
-              onPlay={togglePlay}
-              onPause={togglePlay}
+              onPlay={() => setPlaying(true)}
+              onPause={() => setPlaying(false)}
               className={classes.video}
             >
               <track kind='captions' srcLang='en' label='English captions' src={hls ? undefined : captionSrc} default />
