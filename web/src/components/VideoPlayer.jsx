@@ -4,6 +4,8 @@ import {
   DialogContent,
   DialogTitle,
   IconButton,
+  ListItemIcon,
+  ListItemText,
   Menu,
   MenuItem,
   Slider,
@@ -12,11 +14,13 @@ import {
   useMediaQuery,
 } from '@material-ui/core'
 import { makeStyles, withStyles } from '@material-ui/core/styles'
+import AudiotrackIcon from '@material-ui/icons/Audiotrack'
 import CloseIcon from '@material-ui/icons/Close'
 import Forward10Icon from '@material-ui/icons/Forward10'
 import FullscreenIcon from '@material-ui/icons/Fullscreen'
 import FullscreenExitIcon from '@material-ui/icons/FullscreenExit'
 import GetAppIcon from '@material-ui/icons/GetApp'
+import LibraryMusicIcon from '@material-ui/icons/LibraryMusic'
 import PauseIcon from '@material-ui/icons/Pause'
 import PictureInPictureIcon from '@material-ui/icons/PictureInPicture'
 import PlayArrowIcon from '@material-ui/icons/PlayArrow'
@@ -46,6 +50,7 @@ import {
   subtitleFileUrl,
   trackLabel,
 } from 'utils/Subs'
+import { loadAudioOptions } from 'utils/AudioTracks'
 
 import { StyledButton } from './TorrentCard/style'
 
@@ -75,6 +80,22 @@ const PlayerTooltip = props => <Tooltip PopperProps={{ container: portalContaine
 
 const canPlayNativeHls = video =>
   Boolean(video.canPlayType('application/vnd.apple.mpegurl') || video.canPlayType('application/x-mpegURL'))
+
+// audio=N of the HLS master playlist selects the audio track (see gstreamerMasterUrl)
+const audioFromSrc = src => {
+  try {
+    const value = Number(new URL(src, window.location.href).searchParams.get('audio'))
+    return Number.isInteger(value) && value >= 0 ? value : 0
+  } catch (_) {
+    return 0
+  }
+}
+
+const srcWithAudio = (src, audio) => {
+  const url = new URL(src, window.location.href)
+  url.searchParams.set('audio', audio)
+  return url.toString()
+}
 
 const PrettoSlider = withStyles(theme => ({
   root: {
@@ -403,6 +424,7 @@ const VideoPlayer = ({
   onNotSupported,
   hls = false,
   heartbeatSrc = '',
+  audioSource = null,
   showTrigger = true,
   initiallyOpen = false,
   onClose,
@@ -446,6 +468,14 @@ const VideoPlayer = ({
   const [externalTracks, setExternalTracks] = useState([])
   const [embeddedTracks, setEmbeddedTracks] = useState([])
   const [externalKey, setExternalKey] = useState(null) // 'ass:<index>', 'text:<index>', 'eass:<index>' or 'etext:<index>' of the selected track
+  const [audio, setAudio] = useState(() => audioFromSrc(videoSrc))
+  const [audioOptions, setAudioOptions] = useState([])
+  const [audioAnchorEl, setAudioAnchorEl] = useState(null)
+  const resumeRef = useRef(0)
+  const audioLoadedForRef = useRef('')
+  const mountedRef = useRef(true)
+  // the player only changes the audio track itself when it knows which file to ask the server about
+  const masterSrc = hls && audioSource ? srcWithAudio(videoSrc, audio) : videoSrc
 
   const setVideoNode = useCallback(node => {
     videoRef.current = node
@@ -455,6 +485,13 @@ const VideoPlayer = ({
   useEffect(() => {
     onNotSupportedRef.current = onNotSupported
   }, [onNotSupported])
+
+  useEffect(
+    () => () => {
+      mountedRef.current = false
+    },
+    [],
+  )
 
   useEffect(() => {
     const vid = document.createElement('video')
@@ -467,6 +504,10 @@ const VideoPlayer = ({
 
     const video = videoElement
 
+    // set by changeAudio: the stream is reloaded with another audio track and continues from here
+    const resumeAt = resumeRef.current
+    resumeRef.current = 0
+
     let hlsPlayer
     let nativeHls = false
     setLoading(true)
@@ -474,7 +515,7 @@ const VideoPlayer = ({
     setSubtitleTrack(-1)
 
     if (Hls.isSupported()) {
-      hlsPlayer = new Hls()
+      hlsPlayer = new Hls(resumeAt > 0 ? { startPosition: resumeAt } : {})
       hlsPlayer.subtitleDisplay = false // text subtitles are drawn by TextCues
       hlsRef.current = hlsPlayer
       hlsPlayer.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
@@ -500,11 +541,20 @@ const VideoPlayer = ({
           setLoading(false)
         }
       })
-      hlsPlayer.loadSource(videoSrc)
+      hlsPlayer.loadSource(masterSrc)
       hlsPlayer.attachMedia(video)
     } else if (canPlayNativeHls(video)) {
       nativeHls = true
-      video.src = videoSrc
+      video.src = masterSrc
+      if (resumeAt > 0) {
+        video.addEventListener(
+          'loadedmetadata',
+          () => {
+            video.currentTime = resumeAt
+          },
+          { once: true },
+        )
+      }
       video.load()
       video.play().catch(() => {})
     } else {
@@ -523,7 +573,7 @@ const VideoPlayer = ({
         video.load()
       }
     }
-  }, [hls, open, videoElement, videoSrc])
+  }, [hls, open, videoElement, masterSrc])
 
   useEffect(() => {
     if (!open || !videoElement || !textLayerRef.current) return undefined
@@ -552,6 +602,20 @@ const VideoPlayer = ({
 
     return () => window.clearInterval(timer)
   }, [heartbeatSrc, open])
+
+  // Audio tracks (embedded and external files) are requested once the stream has started,
+  // so the probe does not compete with the first playlist and segments.
+  useEffect(() => {
+    if (!open || !hls || !audioSource || loading) return
+    const key = `${audioSource.hash}:${audioSource.fileId}`
+    if (audioLoadedForRef.current === key) return
+    audioLoadedForRef.current = key
+    loadAudioOptions(audioSource.hash, audioSource.fileId, t)
+      .then(options => {
+        if (mountedRef.current) setAudioOptions(options)
+      })
+      .catch(() => {})
+  }, [open, hls, audioSource, loading, t])
 
   const handlePlayPause = useCallback(() => {
     const video = videoRef.current
@@ -824,6 +888,14 @@ const VideoPlayer = ({
     [],
   )
 
+  const openAudioMenu = e => setAudioAnchorEl(e.currentTarget)
+  const closeAudioMenu = () => setAudioAnchorEl(null)
+  const changeAudio = value => {
+    closeAudioMenu()
+    if (value === audio) return
+    resumeRef.current = videoRef.current?.currentTime || 0
+    setAudio(value)
+  }
   const openSubtitleMenu = e => setSubtitleAnchorEl(e.currentTarget)
   const closeSubtitleMenu = () => setSubtitleAnchorEl(null)
   const changeSubtitleTrack = index => {
@@ -1028,6 +1100,38 @@ const VideoPlayer = ({
                   </Box>
                 )}
                 <Box flexGrow={1} />
+                {audioOptions.length > 1 && (
+                  <>
+                    <Tooltip title={t('GStreamer.AudioTrack')}>
+                      <IconButton size='medium' onClick={openAudioMenu} className={classes.iconButton}>
+                        <AudiotrackIcon fontSize='medium' />
+                      </IconButton>
+                    </Tooltip>
+                    <Menu
+                      anchorEl={audioAnchorEl}
+                      open={Boolean(audioAnchorEl)}
+                      onClose={closeAudioMenu}
+                      className={classes.subtitleMenu}
+                    >
+                      {audioOptions.map(option => (
+                        <MenuItem
+                          key={option.key}
+                          selected={option.audio === audio}
+                          onClick={() => changeAudio(option.audio)}
+                        >
+                          <ListItemIcon style={{ minWidth: 34 }}>
+                            {option.external ? (
+                              <LibraryMusicIcon fontSize='small' />
+                            ) : (
+                              <AudiotrackIcon fontSize='small' />
+                            )}
+                          </ListItemIcon>
+                          <ListItemText primary={option.primary} secondary={option.secondary} />
+                        </MenuItem>
+                      ))}
+                    </Menu>
+                  </>
+                )}
                 {hasSubtitleMenu && (
                   <>
                     <PlayerTooltip title={t('GStreamer.Subtitles')}>
