@@ -59,22 +59,24 @@ jobs:
           REPO: "${{ github.repository }}"
 
       - name: Set version
+        id: version
         run: |
-          SERVER_VERSION=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' server/version/version.go)
-          SERVER_VER="${SERVER_VERSION#MatriX.}"
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            TAG="${GITHUB_REF#refs/tags/}"
-            if [[ "$TAG" == MatriX.* ]]; then
-              VERSION="$TAG"
-            else
-              VERSION="MatriX.${TAG}"
-            fi
-          elif [[ "${{ github.ref }}" == refs/heads/* ]]; then
-            VERSION="MatriX.${SERVER_VER}.${GITHUB_SHA:0:7}"
-          else
-            VERSION="${SERVER_VERSION}"
+          set -euo pipefail
+          # keep only [A-Za-z0-9._-]: the value goes into `-ldflags "-X ...=${VERSION}"`
+          sanitize() { printf '%s' "$1" | tr -cs 'A-Za-z0-9._-' '-' | sed 's/^-*//; s/-*$//'; }
+
+          SERVER_VERSION=$(awk -F'"' '/Version = "/ { print $2; exit }' server/version/version.go)
+          if [ -z "$SERVER_VERSION" ]; then
+            echo "::error::cannot read Version from server/version/version.go"
+            exit 1
           fi
-          echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            VERSION=$(sanitize "$GITHUB_REF_NAME")
+          else
+            VERSION="$(sanitize "$SERVER_VERSION").${GITHUB_SHA:0:7}"
+          fi
+          echo "value=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Version: ${VERSION}"
 
       - name: Extract metadata
@@ -100,6 +102,6 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             REACT_APP_TMDB_API_KEY=${{ secrets.TMDB_API_KEY }}
-            VERSION=${{ env.VERSION }}
+            VERSION=${{ steps.version.outputs.value }}
           cache-from: type=gha,scope=docker-${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.variant }}
