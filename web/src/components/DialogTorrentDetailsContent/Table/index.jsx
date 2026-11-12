@@ -51,6 +51,7 @@ const Table = memo(
         src: hls ? gstreamerMasterUrl(hash, id) : getFileLink(path, id),
         hls,
         heartbeatSrc: hls ? gstreamerHeartbeatUrl(hash) : '',
+        audioSource: hls ? { hash, fileId: id } : undefined,
       }
     }
     const markPlayerUnsupported = key => {
@@ -154,6 +155,7 @@ const Table = memo(
                             downloadSrc={link}
                             hls={player.hls}
                             heartbeatSrc={player.heartbeatSrc}
+                            audioSource={player.audioSource}
                             onNotSupported={() => markPlayerUnsupported(player.key)}
                           />
                         ) : (
@@ -280,6 +282,7 @@ const Table = memo(
                         downloadSrc={link}
                         hls={player.hls}
                         heartbeatSrc={player.heartbeatSrc}
+                        audioSource={player.audioSource}
                         onNotSupported={() => markPlayerUnsupported(player.key)}
                       />
                     )}
