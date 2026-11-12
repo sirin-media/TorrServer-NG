@@ -121,18 +121,14 @@ jobs:
       - name: Set version
         run: |
           SERVER_VERSION=$(sed -n 's/.*Version = "\([^"]*\)".*/\1/p' server/version/version.go)
-          SERVER_VER="${SERVER_VERSION#MatriX.}"
+          SERVER_VERSION_SAFE=$(echo "$SERVER_VERSION" | tr ' ' '-' | tr -d '()')
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            if [[ "$TAG" == MatriX.* ]]; then
-              VERSION="$TAG"
-            else
-              VERSION="MatriX.${TAG}"
-            fi
+            VERSION="$TAG"
           elif [[ "${{ github.ref }}" == refs/heads/* ]]; then
-            VERSION="MatriX.${SERVER_VER}.${GITHUB_SHA:0:7}"
+            VERSION="${SERVER_VERSION_SAFE}.${GITHUB_SHA:0:7}"
           else
-            VERSION="${SERVER_VERSION}"
+            VERSION="${SERVER_VERSION_SAFE}"
           fi
           echo "VERSION=${VERSION}" >> "$GITHUB_ENV"
           echo "Version: ${VERSION}"
