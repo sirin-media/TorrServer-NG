@@ -671,7 +671,7 @@ const VideoPlayer = ({
 
   // While the video plays, the controls hide after a few seconds without activity (the cursor too); a move
   // of the mouse, a touch or a key brings them back. On pause and while a menu is open they stay.
-  const menuOpen = Boolean(anchorEl || subtitleAnchorEl)
+  const menuOpen = Boolean(anchorEl || subtitleAnchorEl || audioAnchorEl)
   useEffect(() => {
     const wrapper = wrapperRef.current
     if (!open || !playing || !wrapper || menuOpen) {
@@ -1102,12 +1102,13 @@ const VideoPlayer = ({
                 <Box flexGrow={1} />
                 {audioOptions.length > 1 && (
                   <>
-                    <Tooltip title={t('GStreamer.AudioTrack')}>
+                    <PlayerTooltip title={t('GStreamer.AudioTrack')}>
                       <IconButton size='medium' onClick={openAudioMenu} className={classes.iconButton}>
                         <AudiotrackIcon fontSize='medium' />
                       </IconButton>
-                    </Tooltip>
+                    </PlayerTooltip>
                     <Menu
+                      container={portalContainer}
                       anchorEl={audioAnchorEl}
                       open={Boolean(audioAnchorEl)}
                       onClose={closeAudioMenu}
